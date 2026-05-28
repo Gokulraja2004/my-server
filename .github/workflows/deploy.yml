@@ -26,6 +26,22 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Start Application
+        run: |
+          npm start &
+          sleep 15
+
+      # Health Check
+      - name: Health Check
+        run: |
+          curl --fail http://localhost:3000/health || exit 1
+
+      # Readiness Check
+      - name: Readiness Check
+        run: |
+          curl --fail http://localhost:3000/ready || exit 1
+
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5
         env:
