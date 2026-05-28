@@ -1,0 +1,54 @@
+name: Deploy Node App to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint check
+        run: npm run lint
+
+      - name: Unit test
+        run: npm test
+
+      - name: Security scan
+        run: npm audit --audit-level=high
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/simple-ec2-demo || {
+              sudo mkdir -p /opt/simple-ec2-demo
+              sudo chown -R $USER:$USER /opt/simple-ec2-demo
+              cd /opt/simple-ec2-demo
+            }
+
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
+            else
+              git pull origin main
+            fi
+
+            npm install
+            pm2 restart simple-ec2-demo || pm2 start server.js --name simple-ec2-demo
+            pm2 save
