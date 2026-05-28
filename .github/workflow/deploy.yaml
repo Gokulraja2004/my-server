@@ -1,4 +1,4 @@
-name: Deploy Node App to EC2
+name: Deploy with Lint SonarQube Trivy
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  deploy:
+  scan-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,14 +21,29 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Lint check
+      - name: Linting
         run: npm run lint
 
       - name: Unit test
         run: npm test
 
-      - name: Security scan
+      - name: NPM security audit
         run: npm audit --audit-level=high
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
@@ -37,18 +52,21 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /opt/simple-ec2-demo || {
-              sudo mkdir -p /opt/simple-ec2-demo
-              sudo chown -R $USER:$USER /opt/simple-ec2-demo
-              cd /opt/simple-ec2-demo
-            }
+            APP_DIR="/opt/simple-ec2-demo"
 
-            if [ ! -d ".git" ]; then
-              git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
-            else
-              git pull origin main
-            fi
+            cd $APP_DIR
+            git pull origin main
 
             npm install
+            npm run lint
+            npm test
+
             pm2 restart simple-ec2-demo || pm2 start server.js --name simple-ec2-demo
             pm2 save
+
+            sleep 5
+
+            curl -f http://localhost:3000/health
+            curl -f http://localhost:3000/ready
+
+            echo "Deployment success"
